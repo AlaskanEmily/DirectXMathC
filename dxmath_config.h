@@ -58,12 +58,24 @@
 #define DXMATH_ALIGN_UNION(N) DXMATH_ALIGN(union, N)
 #endif
 
+/* Get a pure function and a pure-out-function attribute, if possible. */
+
 #if defined(_MSC_VER) && (_MSC_VER >= 1500)
-#define DXMATH_CONSTEXPR __declspec(noalias)
+#define DXMATH_CONSTEXPR _Check_return_ __declspec(noalias)
+#define DXMATH_CONSTEXPR_OUT_ARG __declspec(noalias)
 #elif defined(__GNUC__) && (__GNUC__ > 2)
-#define DXMATH_CONSTEXPR __attribute__((pure))
+
+#define DXMATH_CONSTEXPR __attribute__((pure, warn_unused_result))
+
+#if __GNUC__ >= 4
+#define DXMATH_CONSTEXPR_OUT_ARG __attribute__((nothrow))
+#else
+#define DXMATH_CONSTEXPR_OUT_ARG
+#endif
+
 #else
 #define DXMATH_CONSTEXPR
+#define DXMATH_CONSTEXPR_OUT_ARG
 #endif
 
 #endif /* DXMATH_CONFIG_HEADER */

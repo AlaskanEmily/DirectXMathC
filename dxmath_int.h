@@ -69,6 +69,27 @@
 
 #endif /* DXMATH_IS_INTEL */
 
+#ifdef DXMATH_IS_ULTRASPARC
+
+#if defined(__GNUC__) && !defined(DXMATH_ULTRASPARC_INTRINSICS)
+/* Use generic vector intrinsics when we have GCC. */
+#define DXMATH_ULTRASPARC_INTRINSICS
+#endif
+
+#if defined(DXMATH_VIS2_INTRINSICS) && !defined DXMATH_VIS_INTRINSICS
+#define DXMATH_VIS_INTRINSICS
+#endif
+
+#if defined(DXMATH_VIS_INTRINSICS) && !defined DXMATH_ULTRASPARC_INTRINSICS
+#define DXMATH_ULTRASPARC_INTRINSICS
+#endif
+
+#if defined(DXMATH_ULTRASPARC_INTRINSICS) && !defined(DXMATH_GENERIC_GCC_INTRINSICS)
+#define DXMATH_GENERIC_GCC_INTRINSICS
+#endif
+
+#endif /* DXMATH_IS_ULTRASPARC */
+
 #ifdef DXMATH_IS_ARM
 
 #if defined(DXMATH_USE_NEON) && !defined(DXMATH_ARM_NEON_INTRINSICS)

@@ -32,7 +32,7 @@
  *
  * This version has been translated to C, had any Visual C/C++ specific
  * features put into conditional defines to allow compiling with any C compiler
- * (include with ANSI options), and has been tested on platforms other than
+ * (including with ANSI options), and has been tested on platforms other than
  * Windows.
  *
  * The intent is to allow the use of DirectX Math vectors and matrices to be
@@ -40,7 +40,11 @@
  * interface with C (such as Mercury and Python), and to allow use with older
  * or less capable C/C++ compilers such as GCC 2 on Haiku or Watcom C/C++.
  *
- * Work to use GCC builtins and inline assembly for Watcom hasn't started yet.
+ * Some work has been done to make this library work on platforms such as
+ * UltraSparc where GCC vector_size attribute allows for vector slicing and in
+ * theory the compiler can make use of SIMD where possible in that case.
+ *
+ * Work to use VIS intrinsics and inline assembly for Watcom hasn't started yet.
  */
 
 #include "dxmath_config.h"
@@ -53,15 +57,14 @@
 /* Needed for memcpy */
 #include <string.h>
 
-#if defined(_MSC_VER) && defined(DXMATH_SSE_INTRINSICS)
+#if defined(DXMATH_SSE_INTRINSICS)
 #include <xmmintrin.h>
 #include <smmintrin.h>
 #endif
 
-#if defined(_MSC_VER) && defined(DXMATH_SSE3_INTRINSICS)
+#if defined(DXMATH_SSE3_INTRINSICS)
 #include <intrin.h>
 #endif
-
 
 #ifdef __cplusplus
 extern "C" {
@@ -181,7 +184,7 @@ static union dxmath_vector4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_SoftVector4Zero(
 /* Vector intrinsic: Four 32 bit floating point components aligned on a 16 byte
  * boundary and mapped to hardware vector registers.
  */
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) || defined(__GNUC__)
 
 /* Only use the SSE or NEON types in MSVC when !DXMATH_NO_INTRINSICS */
 #if defined(DXMATH_SSE_INTRINSICS)
@@ -215,7 +218,32 @@ static __m128 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Zero(void){
 #error TODO! DXMATH_Vector4Infinity
 #error TODO! DXMATH_Vector4Zero
 typedef float32x4_t DXMATH_VECTOR4;
+
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+
+typedef float dxmath_vector4_t __attribute__((vector_size(16)));
+typedef dxmath_vector4_t DXMATH_VECTOR4;
+
+#ifdef INFINITY
+#define DXMATH_Vector4Infinity() {INFINITY, INFINITY, INFINITY, INFINITY}
+#elif defined __GNUC__
+#define DXMATH_Vector4Infinity DXMATH_SoftVector4Infinity
+#endif
+
+#define DXMATH_Vector4Zero() {0.0f, 0.0f, 0.0f, 0.0f}
+
+static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Set(
+    const float x, const float y, const float z, const float w){
+    dxmath_vector4_t vec;
+    vec[0] = x;
+    vec[1] = y;
+    vec[2] = z;
+    vec[3] = w;
+    return vec;
+}
+
 #else
+
 #define DXMATH_Vector4Infinity DXMATH_SoftVector4Infinity
 #define DXMATH_Vector4Zero DXMATH_SoftVector4Zero
 typedef union dxmath_vector4 DXMATH_VECTOR4;
@@ -280,14 +308,14 @@ static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4SelectLane(
             break;
         case 1:
             vec.vector4_f32[0] = 0.0f;
-            vec.vector4_f32[1] = V.vector4_f32[0];
+            vec.vector4_f32[1] = V.vector4_f32[1;
             vec.vector4_f32[2] = 0.0f;
             vec.vector4_f32[3] = 0.0f;
             break;
         case 2:
             vec.vector4_f32[0] = 0.0f;
             vec.vector4_f32[1] = 0.0f;
-            vec.vector4_f32[2] = V.vector4_f32[0];
+            vec.vector4_f32[2] = V.vector4_f32[2];
             vec.vector4_f32[3] = 0.0f;
             break;
         default: /* FALLTHROUGH */
@@ -295,7 +323,7 @@ static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4SelectLane(
             vec.vector4_f32[0] = 0.0f;
             vec.vector4_f32[1] = 0.0f;
             vec.vector4_f32[2] = 0.0f;
-            vec.vector4_f32[3] = V.vector4_f32[0];
+            vec.vector4_f32[3] = V.vector4_f32[3];
             break;
     }
     return vec;
@@ -331,6 +359,15 @@ static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4SelectLane(
     }
 }
 
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+
+static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4SelectLane(
+    DXMATH_VECTOR4 V, unsigned lane){
+    DXMATH_VECTOR4 vec = {0.0f, 0.0f, 0.0f, 0.0f};
+    vec[lane] = V[lane];
+    return vec;
+}
+
 #endif
 
 /*****************************************************************************/
@@ -347,6 +384,8 @@ static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Multiply(
 #define DXMATH_Vector4Multiply vmulq_f32
 #elif defined(DXMATH_SSE_INTRINSICS)
 #define DXMATH_Vector4Multiply _mm_mul_ps
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+#define DXMATH_Vector4Multiply(A, B) ((A)*(B))
 #endif
 
 /*****************************************************************************/
@@ -363,6 +402,8 @@ static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Divide(
 #define DXMATH_Vector4Divide vdivq_f32
 #elif defined(DXMATH_SSE_INTRINSICS)
 #define DXMATH_Vector4Divide _mm_div_ps
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+#define DXMATH_Vector4Divide(A, B) ((A)/(B))
 #endif
 
 /*****************************************************************************/
@@ -379,6 +420,8 @@ static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Add(
 #define DXMATH_Vector4Add vaddq_f32
 #elif defined(DXMATH_SSE_INTRINSICS)
 #define DXMATH_Vector4Add _mm_add_ps
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+#define DXMATH_Vector4Add(A, B) ((A)+(B))
 #endif
 
 /*****************************************************************************/
@@ -395,7 +438,29 @@ static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Subtract(
 #define DXMATH_Vector4Subtract vsubq_f32
 #elif defined(DXMATH_SSE_INTRINSICS)
 #define DXMATH_Vector4Subtract _mm_sub_ps
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+#define DXMATH_Vector4Subtract(A, B) ((A)-(B))
 #endif
+
+static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Scale(
+    const DXMATH_VECTOR4 V, const float F){
+#ifdef DXMATH_GENERIC_GCC_INTRINSICS
+    return V * F;
+    
+#elif defined(DXMATH_SSE_INTRINSICS)
+
+#ifdef __GNUC__
+    const DXMATH_VECTOR4 vec1 = _mm_set_ps1(F);
+#else
+    const DXMATH_VECTOR4 vec1 = _mm_set1_ps(F);
+#endif
+
+    return _mm_div_ps(V,vec1);
+
+#else
+    return DXMATH_Vector4Multiply(DXMATH_Vector4Set(F, F, F, F), V);
+#endif
+}
 
 /*****************************************************************************/
 /* DXMATH_VectorSum(V) = V.x + V.y + V.z + V.w */
@@ -425,6 +490,8 @@ static float DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Sum(
     /* Add Z and W together and return. */
     const DXMATH_VECTOR4 vec5 = _mm_add_ps(vec3,vec4);
     return vec5.m128_f32[0];
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+    return V[0] + V[1] + V[2] + V[3];
 #endif
 }
 
@@ -474,15 +541,19 @@ static float DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Length(
 /* Normalizes the vector. */
 static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Normalize(
     const DXMATH_VECTOR4 V){
-#if defined(DXMATH_NO_INTRINSICS)
+#if defined(DXMATH_NO_INTRINSICS) || defined(DXMATH_GENERIC_GCC_INTRINSICS)
+    DXMATH_VECTOR4 vec;
     const float unsafe_len = DXMATH_Vector4Length(V);
     /* Prevent divide by zero */
     const float len = (unsafe_len != 0.0f) ? (1.0f / unsafe_len) : 0.0f;
-    DXMATH_VECTOR4 vec;
-    vec.vector4_f32[0] = V.vector4_f32[0]*len;
-    vec.vector4_f32[1] = V.vector4_f32[1]*len;
-    vec.vector4_f32[2] = V.vector4_f32[2]*len;
-    vec.vector4_f32[3] = V.vector4_f32[3]*len;
+    #ifdef defined(DXMATH_GENERIC_GCC_INTRINSICS)
+        vec = V*len;
+    #else
+        vec.vector4_f32[0] = V.vector4_f32[0]*len;
+        vec.vector4_f32[1] = V.vector4_f32[1]*len;
+        vec.vector4_f32[2] = V.vector4_f32[2]*len;
+        vec.vector4_f32[3] = V.vector4_f32[3]*len;
+    #endif
     return vec;
 
 #elif defined(DXMATH_ARM_NEON_INTRINSICS)
@@ -567,12 +638,17 @@ DXMATH_ALIGN_UNION(16) dxmath_matrix4x4 {
 
 #ifdef DXMATH_NO_INTRINSICS
 typedef union dxmath_matrix4x4 DXMATH_MATRIX44;
+
 #else
+/* Includes DXMATH_GENERIC_GCC_INTRINSICS */
 DXMATH_ALIGN_STRUCT(16) DXMATH_MATRIX44_struct {
     DXMATH_VECTOR4 r[4];
 };
 typedef struct DXMATH_MATRIX44_struct DXMATH_MATRIX44;
 #endif
+
+#define DXMATH_Matrix44Row(MATRIX_, N_) \
+    (MATRIX_).r[N_]
 
 /*****************************************************************************/
 
@@ -593,6 +669,21 @@ static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Select(
     const DXMATH_VECTOR4 vec2 = _mm_and_ps(V2,Control);
     const DXMATH_VECTOR4 result = _mm_or_ps(vec1,vec2);
     return result;
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+    DXMATH_VECTOR4 vec;
+    unsigned u1 __attribute__ ((vector_size (16)));
+    unsigned u2 __attribute__ ((vector_size (16)));
+    unsigned control __attribute__ ((vector_size (16)));
+    unsigned result __attribute__ ((vector_size (16)));
+    __builtin_memcpy(&u1, &V1, 16);
+    __builtin_memcpy(&u2, &V2, 16);
+    __builtin_memcpy(&control, &Control, 16);
+    
+    u1 = u1 & ~control;
+    u2 = u2 & control;
+    result = u1 | u2;
+    __builtin_memcpy(&vec, &result, 16);
+    return vec;
 #endif
 }
 
@@ -601,7 +692,7 @@ static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Vector4Select(
  * 16 byte boundary and mapped to four hardware vector registers.
  */
 
-static void DXMATH_CONSTEXPR DXMATH_CALL XMMatrix44IdentityOut(
+static void DXMATH_CONSTEXPR_OUT_ARG DXMATH_CALL DXMATH_Matrix44IdentityOut(
     DXMATH_MATRIX44 *Out){
 #ifdef DXMATH_NO_INTRINSICS
     Out->f.a = 1.0f;
@@ -626,20 +717,27 @@ static void DXMATH_CONSTEXPR DXMATH_CALL XMMatrix44IdentityOut(
     Out->r[1] = vec1;
     Out->r[2] = vec2;
     Out->r[3] = vec3;
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+    *Out = {
+        {1.0f, 0.0f, 0.0f, 0.0},
+        {0.0f, 1.0f, 0.0f, 0.0},
+        {0.0f, 0.0f, 1.0f, 0.0},
+        {0.0f, 0.0f, 0.0f, 1.0}
+    };
 #endif
 }
 
 /*****************************************************************************/
 
-static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL XMMatrix44Identity(){
+static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44Identity(){
     DXMATH_MATRIX44 mat;
-    XMMatrix44IdentityOut(&mat);
+    DXMATH_Matrix44IdentityOut(&mat);
     return mat;
 }
 
 /*****************************************************************************/
 
-static void DXMATH_CONSTEXPR DXMATH_CALL XMMatrix44SetOut(
+static void DXMATH_CONSTEXPR_OUT_ARG DXMATH_CALL DXMATH_Matrix44SetOut(
     const float a, const float b, const float c, const float d,
     const float e, const float f, const float g, const float h,
     const float i, const float j, const float k, const float l,
@@ -660,7 +758,60 @@ static void DXMATH_CONSTEXPR DXMATH_CALL XMMatrix44SetOut(
 
 /*****************************************************************************/
 
-static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL XMMatrix44Set(
+static void DXMATH_CONSTEXPR_OUT_ARG DXMATH_CALL DXMATH_Matrix44FromVector4Out(
+    const DXMATH_VECTOR4 A,
+    const DXMATH_VECTOR4 B,
+    const DXMATH_VECTOR4 C,
+    const DXMATH_VECTOR4 D,
+    DXMATH_MATRIX44 *Out){
+    
+    /* A rare case where we can just one implementation :D */
+    Out->r[0] = A;
+    Out->r[1] = B;
+    Out->r[2] = C;
+    Out->r[3] = D;
+}
+
+/*****************************************************************************/
+
+static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44FromVector4(
+    const DXMATH_VECTOR4 A,
+    const DXMATH_VECTOR4 B,
+    const DXMATH_VECTOR4 C,
+    const DXMATH_VECTOR4 D){
+    
+    DXMATH_MATRIX44 mat;
+    DXMATH_Matrix44FromVector4Out(A, B, C, D, &mat);
+    return mat;
+}
+
+/*****************************************************************************/
+
+static void DXMATH_CONSTEXPR_OUT_ARG DXMATH_CALL DXMATH_Matrix44GetAllVector4(
+    const DXMATH_MATRIX44 mat,
+    DXMATH_VECTOR4 *A,
+    DXMATH_VECTOR4 *B,
+    DXMATH_VECTOR4 *C,
+    DXMATH_VECTOR4 *D){
+    
+    *A = mat.r[0];
+    *B = mat.r[1];
+    *C = mat.r[2];
+    *D = mat.r[3];
+}
+
+/*****************************************************************************/
+
+static DXMATH_VECTOR4 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44GetVector4(
+    const DXMATH_MATRIX44 mat, unsigned i){
+    
+    return mat.r[i];
+}
+    
+
+/*****************************************************************************/
+
+static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44Set(
     const float a, const float b, const float c, const float d,
     const float e, const float f, const float g, const float h,
     const float i, const float j, const float k, const float l,
@@ -684,7 +835,7 @@ static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL XMMatrix44Set(
 
 /*****************************************************************************/
 
-static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44TranslationOut(
+static void DXMATH_CONSTEXPR_OUT_ARG DXMATH_CALL DXMATH_Matrix44TranslationOut(
     const float x, const float y, const float z, DXMATH_MATRIX44 *Out){
 #ifdef DXMATH_NO_INTRINSICS
     Out->f.a = 1.0f;
@@ -706,6 +857,16 @@ static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44TranslationOu
     Out->f.n = y;
     Out->f.o = z;
     Out->f.p = 1.0f;
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+    *Out = {
+        {1.0f, 0.0f, 0.0f, 0.0},
+        {0.0f, 1.0f, 0.0f, 0.0},
+        {0.0f, 0.0f, 1.0f, 0.0},
+        {0.0f, 0.0f, 0.0f, 1.0}
+    };
+    Out->r[2][0] = x;
+    Out->r[2][1] = y;
+    Out->r[2][2] = z;
 #else
     #if defined(DXMATH_ARM_NEON_INTRINSICS)
         const DXMATH_VECTOR4 Zero = vdupq_n_f32(0);
@@ -728,7 +889,7 @@ static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44TranslationOu
 
 static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44Translation(
     const float x, const float y, const float z){
-#ifdef DXMATH_NO_INTRINSICS
+#if defined(DXMATH_NO_INTRINSICS) || defined(DXMATH_GENERIC_GCC_INTRINSICS)
     union dxmath_matrix4x4 mat;
     DXMATH_Matrix44TranslationOut(x, y, z, &mat);
     return mat;
@@ -778,6 +939,13 @@ static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44TranslationFr
     mat.r[0] = vsetq_lane_f32(1.0f, Zero, 0);
     mat.r[1] = vsetq_lane_f32(1.0f, Zero, 1);
     mat.r[2] = vsetq_lane_f32(1.0f, Zero, 2);
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+    DXMATH_MATRIX44 mat = {
+        {1.0f, 0.0f, 0.0f, 0.0},
+        {0.0f, 1.0f, 0.0f, 0.0},
+        {0.0f, 0.0f, 1.0f, 0.0},
+        {0.0f, 0.0f, 0.0f, 0.0}
+    };
 #else
     DXMATH_MATRIX44 mat;
         static const __m128 vec0 = {1.0f, 0.0f, 0.0f, 0.0f};
@@ -811,8 +979,8 @@ static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44Scaling(
     mat.f.h = 0.0f;
     
     mat.f.i = 0.0f;
-    mat.f.j = z;
-    mat.f.k = 1.0f;
+    mat.f.j = 0.0f;
+    mat.f.k = z;
     mat.f.l = 0.0f;
     
     mat.f.m = 0.0f;
@@ -821,7 +989,7 @@ static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44Scaling(
     mat.f.p = 1.0f;
     
     return mat;
-#elif defined(DXMATh_ARM_NEON_INTRINSICS)
+#elif defined(DXMATH_ARM_NEON_INTRINSICS)
     const DXMATH_VECTOR4 Zero = vdupq_n_f32(0);
     DXMATH_MATRIX44 mat;
     mat.r[0] = vsetq_lane_f32(x, Zero, 0);
@@ -829,15 +997,23 @@ static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44Scaling(
     mat.r[2] = vsetq_lane_f32(z, Zero, 2);
     mat.r[3] = vsetq_lane_f32(1.0f, Zero, 3);
     return mat;
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+    DXMATH_MATRIX44 mat = {
+        {0.0f, 0.0f, 0.0f, 0.0},
+        {0.0f, 0.0f, 0.0f, 0.0},
+        {0.0f, 0.0f, 0.0f, 0.0},
+        {0.0f, 0.0f, 0.0f, 1.0}
+    };
+    mat.r[0][0] = x;
+    mat.r[1][1] = y;
+    mat.r[2][2] = z;
+    return mat;
 #else
     DXMATH_MATRIX44 mat;
     mat.r[0] = DXMATH_Vector4Set(x, 0.0f, 0.0f, 0.0f);
     mat.r[1] = DXMATH_Vector4Set(0.0f, y, 0.0f, 0.0f);
     mat.r[2] = DXMATH_Vector4Set(0.0f, 0.0f, z, 0.0f);
-    {
-        static const __m128 vec = {0.0f, 0.0f, 0.0f, 1.0f};
-        mat.r[3] = vec;
-    }
+    mat.r[3] = DXMATH_Vector4Set(0.0f, 0.0f, 0.0f, 1.0f);
     return mat;
 #endif
 }
@@ -889,7 +1065,79 @@ static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_Matrix44ScalingFromVe
     mat.r[2] = _mm_and_ps(V, _mm_castsi128_ps(_mm_set_epi32(0x00000000, 0x00000000, 0xFFFFFFFF, 0x00000000)));
     mat.r[3] = _mm_and_ps(V, _mm_castsi128_ps(_mm_set_epi32(0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF)));
     return mat;
+#elif defined(DXMATH_GENERIC_GCC_INTRINSICS)
+    DXMATH_MATRIX44 mat = {
+        {0.0f, 0.0f, 0.0f, 0.0},
+        {0.0f, 0.0f, 0.0f, 0.0},
+        {0.0f, 0.0f, 0.0f, 0.0},
+        {0.0f, 0.0f, 0.0f, 0.0}
+    };
+    unsigned i;
+    for(i = 0; i < 4; i++){
+        mat.r[i][i] = V[i];
+    }
+    return mat;
 #endif
+}
+
+/*****************************************************************************/
+
+static void DXMATH_CONSTEXPR_OUT_ARG DXMATH_CALL DXMATH_TransposeMatrixOut(
+    const DXMATH_MATRIX44 M,
+    DXMATH_MATRIX44 *Out){
+
+#if defined(DXMATH_NO_INTRINSICS) || defined(DXMATH_GENERIC_GCC_INTRINSICS)
+    unsigned a, b;
+    for(a = 0; a < 4; a++){
+        for(b = 0; b < 4; b++){
+#ifdef defined(DXMATH_GENERIC_GCC_INTRINSICS)
+            Out->r[a][b] = M.r[b][a];
+#else
+            Out->fm[a][b] = M.fm[b][a];
+#endif
+        }
+    }
+#elif defined(DXMATH_ARM_NEON_INTRINSICS)
+
+    float32x4x2_t P0 = vzipq_f32(M.r[0], M.r[2]);
+    float32x4x2_t P1 = vzipq_f32(M.r[1], M.r[3]);
+
+    float32x4x2_t T0 = vzipq_f32(P0.val[0], P1.val[0]);
+    float32x4x2_t T1 = vzipq_f32(P0.val[1], P1.val[1]);
+
+    Out->r[0] = T0.val[0];
+    Out->r[1] = T0.val[1];
+    Out->r[2] = T1.val[0];
+    Out->r[3] = T1.val[1];
+    
+#elif defined(DXMATH_SSE_INTRINSICS)
+    
+    /* x.x,x.y,y.x,y.y */
+    const DXMATH_VECTOR4 vec1 = _mm_shuffle_ps(M.r[0],M.r[1], DXMATH_MM_SHUFFLE(1,0,1,0));
+    /* x.z,x.w,y.z,y.w */
+    const DXMATH_VECTOR4 vec3 = _mm_shuffle_ps(M.r[0],M.r[1], DXMATH_MM_SHUFFLE(3,2,3,2));
+    /* z.x,z.y,w.x,w.y */
+    const DXMATH_VECTOR4 vec2 = _mm_shuffle_ps(M.r[2],M.r[3], DXMATH_MM_SHUFFLE(1,0,1,0));
+    /* z.z,z.w,w.z,w.w */
+    const DXMATH_VECTOR4 vec4 = _mm_shuffle_ps(M.r[2],M.r[3], DXMATH_MM_SHUFFLE(3,2,3,2));
+
+    /* x.x,y.x,z.x,w.x */
+    Out->r[0] = _mm_shuffle_ps(vec1, vec2, DXMATH_MM_SHUFFLE(2,0,2,0));
+    /* x.y,y.y,z.y,w.y */
+    Out->r[1] = _mm_shuffle_ps(vec1, vec2, DXMATH_MM_SHUFFLE(3,1,3,1));
+    /* x.z,y.z,z.z,w.z */
+    Out->r[2] = _mm_shuffle_ps(vec3, vec4, DXMATH_MM_SHUFFLE(2,0,2,0));
+    /* x.w,y.w,z.w,w.w */
+    Out->r[3] = _mm_shuffle_ps(vec3, vec4, DXMATH_MM_SHUFFLE(3,1,3,1));
+#endif
+}
+
+static DXMATH_MATRIX44 DXMATH_CONSTEXPR DXMATH_CALL DXMATH_TransposeMatrix(
+    const DXMATH_MATRIX44 M){
+    
+    DXMATH_MATRIX44 mat;
+    DXMATH_TransposeMatrixOut(M, &mat);
+    return mat;
 }
 
 #ifdef __cplusplus

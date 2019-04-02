@@ -16,6 +16,6 @@ used in cross-platform projects, wrapped for use in languages that can only
 interface with C (such as Mercury and Python), and to allow use with older
 or less capable C/C++ compilers such as GCC 2 on Haiku or Watcom C/C++.
 
-It's plausible to add alternative builtins for GCC, and inline x86/x87 ASM for
-use with Watcom. Work to use GCC builtins and inline assembly for Watcom hasn't
-started yet.
+It's plausible to add inline x86/x87 ASM for use with Watcom and additional
+intrinsics or inline ASM for other platforms. Work to use inline assembly
+for Watcom hasn't started yet.
